@@ -17,6 +17,9 @@ var localPages = new Array(
   new Array("Winworld", "https://winworldpc.com/", "Старые версии Windows и программ")
 );
 
+// Адрес программы oldsearch.py (для старых Windows), например "http://192.168.1.5:8080". Пусто = напрямую (только современные браузеры).
+var PROXY = "";
+
 var cbCount = 0;
 var curQuery = "";
 var curOffset = 0;
@@ -67,9 +70,9 @@ function empty() {
 }
 
 // title, url, description -> один результат
-function item(t, url, desc) {
+function item(t, url, desc, shown) {
   var h = '<FONT FACE="Arial" SIZE="4"><A HREF="' + esc(url) + '" TARGET="_blank">' + esc(t) + '</A></FONT><BR>' +
-    '<FONT FACE="Arial" SIZE="2" COLOR="#006600">' + esc(cut(url, 80)) + '</FONT><BR>';
+    '<FONT FACE="Arial" SIZE="2" COLOR="#006600">' + esc(cut(shown || url, 80)) + '</FONT><BR>';
   if (desc) { h += '<FONT FACE="Arial" SIZE="2">' + esc(cut(desc, 250)) + '</FONT><BR>'; }
   return h + '<BR>';
 }
@@ -98,6 +101,7 @@ function goPage(delta) {
 }
 
 function runSearch() {
+  var cb;
   var q = enc(curQuery);
   var pg = curOffset / 10 + 1;
   if (timer) { clearTimeout(timer); timer = null; }
@@ -106,10 +110,15 @@ function runSearch() {
 
   show('<FONT FACE="Arial" SIZE="2" COLOR="#666666">Ищу...</FONT>');
   timer = setTimeout(function () {
-    show('<FONT FACE="Arial" SIZE="2" COLOR="#CC0000">Нет ответа. Старый браузер не умеет открывать сайты по HTTPS (нужен TLS 1.2), либо нет интернета. Попробуйте источник "Мои страницы".</FONT>');
+    show('<FONT FACE="Arial" SIZE="2" COLOR="#CC0000">Нет ответа. ' + (PROXY == "" ? 'Сайты открываются только по HTTPS, а старый браузер его не умеет. Запустите oldsearch.py на новом компьютере и впишите его адрес в PROXY в начале этого файла.' : 'Проверьте, что oldsearch.py запущен и адрес в PROXY верный.') + '</FONT>');
   }, 15000);
 
-  var cb;
+  if (PROXY != "") {
+    cb = newCallback(renderProxy);
+    loadScript(PROXY + "/api?src=" + curSource + "&p=" + pg + "&q=" + q + "&callback=" + cb);
+    return;
+  }
+
   switch (curSource) {
     case 0: cb = newCallback(function (d) { renderWiki(d, "ru.wikipedia.org"); });
       loadScript("https://ru.wikipedia.org/w/api.php?action=query&list=search&format=json&srlimit=10&sroffset=" + curOffset + "&srsearch=" + q + "&callback=" + cb); break;
@@ -128,6 +137,21 @@ function runSearch() {
     case 7: cb = newCallback(renderDDG);
       loadScript("https://api.duckduckgo.com/?q=" + q + "&format=json&no_html=1&skip_disambig=1&callback=" + cb); break;
   }
+}
+
+function renderProxy(data) {
+  var list = (data && data.items) ? data.items : [];
+  var h = "";
+  var i;
+  if (data && data.error) {
+    show('<FONT FACE="Arial" SIZE="3" COLOR="#CC0000">Ошибка: ' + esc(data.error) + '</FONT>');
+    return;
+  }
+  if (list.length == 0) { empty(); return; }
+  for (i = 0; i < list.length; i++) {
+    h += item(list[i][0], PROXY + "/page?u=" + enc(list[i][1]), list[i][2], list[i][1]);
+  }
+  show(h + pager(data.more));
 }
 
 function renderWiki(data, host) {
