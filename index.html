@@ -1,0 +1,274 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+<HEAD>
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=utf-8">
+<TITLE>Googol - Поиск</TITLE>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+// Результаты показываются прямо на странице. Только JavaScript 1.2-стиля, без новых конструкций.
+// Сетевые источники: IE 5+ / Netscape 6+. Источник "Мои страницы" работает без интернета (IE 4+).
+
+// ---- Свои страницы: добавляйте строки сюда: new Array("Заголовок", "адрес", "описание") ----
+var localPages = new Array(
+  new Array("Википедия", "https://ru.wikipedia.org/", "Свободная энциклопедия"),
+  new Array("Internet Archive", "https://archive.org/", "Архив сайтов, книг, программ и музыки"),
+  new Array("Проект Гутенберг", "https://www.gutenberg.org/", "Бесплатные электронные книги"),
+  new Array("Lib.ru", "http://lib.ru/", "Библиотека Мошкова, русские книги"),
+  new Array("Winworld", "https://winworldpc.com/", "Старые версии Windows и программ")
+);
+
+var cbCount = 0;
+var curQuery = "";
+var curOffset = 0;
+var curSource = 0;
+var timer = null;
+
+function enc(s) {
+  if (window.encodeURIComponent) { return encodeURIComponent(s); }
+  return escape(s);
+}
+
+function esc(s) {
+  s = "" + s;
+  s = s.split("&").join("&amp;");
+  s = s.split("<").join("&lt;");
+  s = s.split(">").join("&gt;");
+  return s;
+}
+
+function cut(s, n) {
+  s = "" + s;
+  if (s.length > n) { return s.substring(0, n) + "..."; }
+  return s;
+}
+
+function show(html) {
+  document.getElementById("res").innerHTML = html;
+}
+
+function loadScript(url) {
+  var s = document.createElement("script");
+  s.src = url;
+  document.getElementsByTagName("head")[0].appendChild(s);
+}
+
+function newCallback(fn) {
+  cbCount = cbCount + 1;
+  var name = "jsonpCb" + cbCount;
+  window[name] = function (data) {
+    if (timer) { clearTimeout(timer); timer = null; }
+    fn(data);
+  };
+  return name;
+}
+
+function empty() {
+  show('<FONT FACE="Arial" SIZE="3">Ничего не найдено по запросу <B>' + esc(curQuery) + '</B>.</FONT>');
+}
+
+// title, url, description -> один результат
+function item(t, url, desc) {
+  var h = '<FONT FACE="Arial" SIZE="4"><A HREF="' + esc(url) + '" TARGET="_blank">' + esc(t) + '</A></FONT><BR>' +
+    '<FONT FACE="Arial" SIZE="2" COLOR="#006600">' + esc(cut(url, 80)) + '</FONT><BR>';
+  if (desc) { h += '<FONT FACE="Arial" SIZE="2">' + esc(cut(desc, 250)) + '</FONT><BR>'; }
+  return h + '<BR>';
+}
+
+function pager(hasNext) {
+  var h = '<HR SIZE="1"><FONT FACE="Arial" SIZE="2">';
+  if (curOffset > 0) { h += '<A HREF="javascript:goPage(-10)">&lt; Назад</A> &nbsp; '; }
+  if (hasNext) { h += '<A HREF="javascript:goPage(10)">Дальше &gt;</A>'; }
+  return h + '</FONT>';
+}
+
+function startSearch() {
+  var f = document.forms[0];
+  curQuery = f.q.value;
+  curSource = f.src.selectedIndex;
+  curOffset = 0;
+  if (curQuery == "") { f.q.focus(); return false; }
+  runSearch();
+  return false;
+}
+
+function goPage(delta) {
+  curOffset = curOffset + delta;
+  if (curOffset < 0) { curOffset = 0; }
+  runSearch();
+}
+
+function runSearch() {
+  var q = enc(curQuery);
+  var pg = curOffset / 10 + 1;
+  if (timer) { clearTimeout(timer); timer = null; }
+
+  if (curSource == 8) { searchLocal(); return; }
+
+  show('<FONT FACE="Arial" SIZE="2" COLOR="#666666">Ищу...</FONT>');
+  timer = setTimeout(function () {
+    show('<FONT FACE="Arial" SIZE="2" COLOR="#CC0000">Нет ответа. Старый браузер не умеет открывать сайты по HTTPS (нужен TLS 1.2), либо нет интернета. Попробуйте источник "Мои страницы".</FONT>');
+  }, 15000);
+
+  var cb;
+  switch (curSource) {
+    case 0: cb = newCallback(function (d) { renderWiki(d, "ru.wikipedia.org"); });
+      loadScript("https://ru.wikipedia.org/w/api.php?action=query&list=search&format=json&srlimit=10&sroffset=" + curOffset + "&srsearch=" + q + "&callback=" + cb); break;
+    case 1: cb = newCallback(function (d) { renderWiki(d, "en.wikipedia.org"); });
+      loadScript("https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&srlimit=10&sroffset=" + curOffset + "&srsearch=" + q + "&callback=" + cb); break;
+    case 2: cb = newCallback(function (d) { renderWiki(d, "ru.wiktionary.org"); });
+      loadScript("https://ru.wiktionary.org/w/api.php?action=query&list=search&format=json&srlimit=10&sroffset=" + curOffset + "&srsearch=" + q + "&callback=" + cb); break;
+    case 3: cb = newCallback(renderBooks);
+      loadScript("https://www.googleapis.com/books/v1/volumes?maxResults=10&startIndex=" + curOffset + "&q=" + q + "&callback=" + cb); break;
+    case 4: cb = newCallback(renderArchive);
+      loadScript("https://archive.org/advancedsearch.php?q=" + q + "&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=description&rows=10&page=" + pg + "&output=json&callback=" + cb); break;
+    case 5: cb = newCallback(renderGithub);
+      loadScript("https://api.github.com/search/repositories?per_page=10&page=" + pg + "&q=" + q + "&callback=" + cb); break;
+    case 6: cb = newCallback(renderItunes);
+      loadScript("https://itunes.apple.com/search?limit=20&term=" + q + "&callback=" + cb); break;
+    case 7: cb = newCallback(renderDDG);
+      loadScript("https://api.duckduckgo.com/?q=" + q + "&format=json&no_html=1&skip_disambig=1&callback=" + cb); break;
+  }
+}
+
+function renderWiki(data, host) {
+  var list = (data && data.query && data.query.search) ? data.query.search : [];
+  var h = "";
+  var i, t, url;
+  if (list.length == 0) { empty(); return; }
+  for (i = 0; i < list.length; i++) {
+    t = list[i].title;
+    url = "https://" + host + "/wiki/" + enc(t.split(" ").join("_"));
+    // snippet приходит с тегами подсветки от Википедии
+    h += '<FONT FACE="Arial" SIZE="4"><A HREF="' + url + '" TARGET="_blank">' + esc(t) + '</A></FONT><BR>' +
+      '<FONT FACE="Arial" SIZE="2" COLOR="#006600">' + esc(url) + '</FONT><BR>' +
+      '<FONT FACE="Arial" SIZE="2">' + list[i].snippet + '</FONT><BR><BR>';
+  }
+  show(h + pager(list.length >= 10));
+}
+
+function renderBooks(data) {
+  var list = (data && data.items) ? data.items : [];
+  var h = "";
+  var i, v, a;
+  if (list.length == 0) { empty(); return; }
+  for (i = 0; i < list.length; i++) {
+    v = list[i].volumeInfo || {};
+    a = v.authors ? v.authors.join(", ") + ". " : "";
+    h += item(v.title || "(без названия)", v.infoLink || "https://books.google.com/", a + (v.description || ""));
+  }
+  show(h + pager(list.length >= 10));
+}
+
+function renderArchive(data) {
+  var list = (data && data.response && data.response.docs) ? data.response.docs : [];
+  var h = "";
+  var i, d;
+  if (list.length == 0) { empty(); return; }
+  for (i = 0; i < list.length; i++) {
+    d = list[i];
+    h += item(d.title || d.identifier, "https://archive.org/details/" + d.identifier, d.description ? ("" + d.description) : "");
+  }
+  show(h + pager(list.length >= 10));
+}
+
+function renderGithub(data) {
+  var d = (data && data.data) ? data.data : data;
+  var list = (d && d.items) ? d.items : [];
+  var h = "";
+  var i;
+  if (list.length == 0) { empty(); return; }
+  for (i = 0; i < list.length; i++) {
+    h += item(list[i].full_name, list[i].html_url, list[i].description || "");
+  }
+  show(h + pager(list.length >= 10));
+}
+
+function renderItunes(data) {
+  var list = (data && data.results) ? data.results : [];
+  var h = "";
+  var i, r, t, u;
+  if (list.length == 0) { empty(); return; }
+  for (i = 0; i < list.length; i++) {
+    r = list[i];
+    t = r.trackName || r.collectionName || r.artistName || "(без названия)";
+    u = r.trackViewUrl || r.collectionViewUrl || r.artistLinkUrl || "https://music.apple.com/";
+    h += item(t, u, (r.artistName || "") + (r.collectionName ? " - " + r.collectionName : ""));
+  }
+  show(h);
+}
+
+function renderDDG(data) {
+  var h = "";
+  var n = 0;
+  var i, j, r, sub;
+  if (data && data.AbstractText) {
+    h += item(data.Heading, data.AbstractURL, data.AbstractText);
+    n++;
+  }
+  r = (data && data.RelatedTopics) ? data.RelatedTopics : [];
+  for (i = 0; i < r.length; i++) {
+    sub = r[i].Topics ? r[i].Topics : [r[i]];
+    for (j = 0; j < sub.length; j++) {
+      if (sub[j].FirstURL) { h += item(sub[j].Text, sub[j].FirstURL, ""); n++; }
+    }
+  }
+  if (n == 0) { empty(); return; }
+  show(h);
+}
+
+// Поиск по списку localPages - без интернета
+function searchLocal() {
+  var words = curQuery.toLowerCase().split(" ");
+  var h = "";
+  var n = 0;
+  var i, j, p, text, ok;
+  for (i = 0; i < localPages.length; i++) {
+    p = localPages[i];
+    text = (p[0] + " " + p[1] + " " + p[2]).toLowerCase();
+    ok = true;
+    for (j = 0; j < words.length; j++) {
+      if (words[j] != "" && text.indexOf(words[j]) < 0) { ok = false; }
+    }
+    if (ok) { h += item(p[0], p[1], p[2]); n++; }
+  }
+  if (n == 0) { empty(); return; }
+  show(h);
+}
+//-->
+</SCRIPT>
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" TEXT="#000000" LINK="#0000CC" VLINK="#551A8B" onLoad="document.forms[0].q.focus()">
+
+<BR>
+<CENTER>
+<FONT FACE="Arial, Helvetica, sans-serif" SIZE="7">
+<B><FONT COLOR="#3366CC">G</FONT><FONT COLOR="#CC0000">o</FONT><FONT COLOR="#FFAA00">o</FONT><FONT COLOR="#3366CC">g</FONT><FONT COLOR="#009900">o</FONT><FONT COLOR="#CC0000">l</FONT></B>
+</FONT>
+<BR><BR>
+
+<FORM METHOD="GET" ACTION="#" onSubmit="return startSearch()">
+<INPUT TYPE="text" NAME="q" SIZE="50" MAXLENGTH="256">
+<BR><BR>
+<FONT FACE="Arial, Helvetica, sans-serif" SIZE="2">Искать в:</FONT>
+<SELECT NAME="src">
+<OPTION SELECTED>Википедия (рус)</OPTION>
+<OPTION>Wikipedia (eng)</OPTION>
+<OPTION>Викисловарь (рус)</OPTION>
+<OPTION>Google Books (книги)</OPTION>
+<OPTION>Internet Archive</OPTION>
+<OPTION>GitHub (проекты)</OPTION>
+<OPTION>iTunes (музыка)</OPTION>
+<OPTION>DuckDuckGo (кратко)</OPTION>
+<OPTION>Мои страницы (без интернета)</OPTION>
+</SELECT>
+<INPUT TYPE="submit" VALUE="Поиск">
+</FORM>
+</CENTER>
+
+<TABLE WIDTH="100%" BORDER="0" CELLPADDING="12" CELLSPACING="0">
+<TR><TD><DIV ID="res"></DIV></TD></TR>
+</TABLE>
+
+</BODY>
+</HTML>
